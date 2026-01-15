@@ -17,7 +17,7 @@ export interface OrderItem {
   quantity: number;
 }
 
-export type OrderStatus = 'pending' | 'preparing' | 'completed' | 'cancelled';
+export type OrderStatus = 'pending' | 'preparing' | 'completed' | 'cancelled' | 'paid';
 
 export interface Order {
   id: string;

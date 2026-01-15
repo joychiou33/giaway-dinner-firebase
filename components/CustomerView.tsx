@@ -35,11 +35,9 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
     });
   };
 
-  // Fix: Explicitly cast Object.values to number[] to avoid 'unknown' type error in reduce (Line 38)
   const cartItemsCount = useMemo(() => (Object.values(cart) as number[]).reduce((a, b) => a + b, 0), [cart]);
   
   const totalPrice = useMemo(() => {
-    // Fix: Explicitly cast Object.entries to [string, number][] to avoid 'unknown' type error in arithmetic operation (Line 41-43)
     return (Object.entries(cart) as [string, number][]).reduce((total, [id, qty]) => {
       const item = INITIAL_MENU.find(m => m.id === id);
       return total + (item?.price || 0) * qty;
@@ -56,7 +54,6 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
       return;
     }
 
-    // Fix: Explicitly cast Object.entries to [string, number][] to ensure qty is recognized as a number (Line 57)
     const orderItems: OrderItem[] = (Object.entries(cart) as [string, number][]).map(([id, qty]) => {
       const item = INITIAL_MENU.find(m => m.id === id)!;
       return {
@@ -76,7 +73,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
 
   if (isOrdered) {
     return (
-      <div className="flex flex-col items-center justify-center min-h-screen bg-white p-6 animate-in fade-in duration-500">
+      <div className="flex flex-col items-center justify-center min-h-[calc(100vh-64px)] bg-white p-6 animate-in fade-in duration-500">
         <CheckCircle className="w-20 h-20 text-green-500 mb-4" />
         <h2 className="text-2xl font-bold mb-2">下單成功！</h2>
         <p className="text-slate-500 mb-8">餐點製作中，請稍候。</p>
@@ -91,7 +88,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 pb-24">
+    <div className="flex flex-col min-h-screen bg-slate-50 pb-32">
       {/* Header */}
       <header className="sticky top-0 z-20 bg-orange-500 text-white p-4 shadow-md">
         <div className="flex justify-between items-center max-w-lg mx-auto">
@@ -99,7 +96,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
             {isStaffMode ? '櫃檯人工點餐' : '美味小吃點餐'}
           </h1>
           <div className="flex items-center gap-2">
-             <span className="text-sm">桌號:</span>
+             <span className="text-sm font-medium">桌號:</span>
              <select 
               value={selectedTable}
               onChange={(e) => setSelectedTable(e.target.value)}
@@ -119,7 +116,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
-              className={`flex-1 py-4 text-sm font-medium transition-colors whitespace-nowrap px-6 border-b-2 ${
+              className={`flex-1 py-4 text-sm font-bold transition-colors whitespace-nowrap px-6 border-b-2 ${
                 activeCategory === cat ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-500'
               }`}
             >
@@ -140,7 +137,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
                 <p className="text-xs text-slate-500 line-clamp-1">{item.description}</p>
               </div>
               <div className="flex justify-between items-end">
-                <span className="text-orange-600 font-bold font-mono">${item.price}</span>
+                <span className="text-orange-600 font-bold font-mono text-lg">${item.price}</span>
                 <div className="flex items-center gap-3">
                   {cart[item.id] > 0 && (
                     <>
@@ -166,12 +163,12 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
         ))}
       </main>
 
-      {/* Cart Bottom Sheet / Button */}
+      {/* Cart Summary (Floating above Nav) */}
       {cartItemsCount > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 z-30 max-w-lg mx-auto">
+        <div className="fixed bottom-20 left-0 right-0 p-4 z-30 max-w-lg mx-auto">
           <div className="bg-slate-900 text-white rounded-2xl shadow-2xl overflow-hidden">
             {showCart && (
-              <div className="p-4 border-b border-slate-700 max-h-[60vh] overflow-y-auto">
+              <div className="p-4 border-b border-slate-700 max-h-[40vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-4">
                   <h4 className="font-bold flex items-center gap-2"><ShoppingCart size={18}/> 您的訂單</h4>
                   <button onClick={() => setShowCart(false)} className="text-slate-400 hover:text-white"><ArrowLeft size={18}/></button>
@@ -180,15 +177,15 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
                   {(Object.entries(cart) as [string, number][]).map(([id, qty]) => {
                     const item = INITIAL_MENU.find(m => m.id === id)!;
                     return (
-                      <div key={id} className="flex justify-between items-center">
+                      <div key={id} className="flex justify-between items-center border-b border-slate-800 pb-2">
                         <div>
                           <p className="font-medium">{item.name}</p>
                           <p className="text-xs text-slate-400">${item.price} x {qty}</p>
                         </div>
                         <div className="flex items-center gap-3">
-                           <button onClick={() => removeFromCart(id)} className="text-slate-400"><Minus size={16}/></button>
-                           <span>{qty}</span>
-                           <button onClick={() => addToCart(id)} className="text-orange-400"><Plus size={16}/></button>
+                           <button onClick={() => removeFromCart(id)} className="text-slate-400 p-1"><Minus size={16}/></button>
+                           <span className="font-bold">{qty}</span>
+                           <button onClick={() => addToCart(id)} className="text-orange-400 p-1"><Plus size={16}/></button>
                         </div>
                       </div>
                     );
@@ -199,19 +196,19 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
             <div className="p-4 flex items-center justify-between">
               <div onClick={() => setShowCart(!showCart)} className="cursor-pointer flex items-center gap-3">
                 <div className="relative">
-                  <ShoppingCart className="w-6 h-6" />
+                  <ShoppingCart className="w-6 h-6 text-orange-400" />
                   <span className="absolute -top-2 -right-2 bg-orange-500 text-white text-[10px] w-5 h-5 rounded-full flex items-center justify-center font-bold">
                     {cartItemsCount}
                   </span>
                 </div>
                 <div>
-                  <p className="text-xs text-slate-400">總金額</p>
-                  <p className="text-lg font-bold text-orange-400">${totalPrice}</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider uppercase">Total Price</p>
+                  <p className="text-lg font-black text-white">${totalPrice}</p>
                 </div>
               </div>
               <button 
                 onClick={handleSubmitOrder}
-                className="bg-orange-500 hover:bg-orange-600 px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-colors"
+                className="bg-orange-500 hover:bg-orange-600 px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-transform active:scale-95 shadow-lg shadow-orange-500/20"
               >
                 <Send size={18} /> 確認下單
               </button>
