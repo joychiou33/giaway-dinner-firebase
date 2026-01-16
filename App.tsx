@@ -134,7 +134,7 @@ const App: React.FC = () => {
                 orders={orders}
                 onUpdateStatus={updateOrderStatus}
                 onClearTable={clearTable}
-                onManualOrder={() => window.location.hash = '/owner/manual'}
+                onAddOrder={handleAddOrder}
                 onLogout={handleLogout}
                 onChangePasscode={handleChangePasscode}
               />

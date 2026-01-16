@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { MenuItem, OrderItem, Category } from '../types';
 import { INITIAL_MENU, TABLES } from '../constants';
-import { ShoppingCart, Plus, Minus, Trash2, ArrowLeft, Send, CheckCircle, MapPin } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, ArrowLeft, Send, CheckCircle, MapPin, Loader2 } from 'lucide-react';
 
 interface CustomerViewProps {
   onAddOrder: (tableNumber: string, items: OrderItem[]) => void;
@@ -16,6 +16,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
   const [cart, setCart] = useState<Record<string, number>>({});
   const [activeCategory, setActiveCategory] = useState<Category>('主食');
   const [showCart, setShowCart] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOrdered, setIsOrdered] = useState(false);
 
   useEffect(() => {
@@ -41,7 +42,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
   };
 
   const cartItemsCount = useMemo(() => (Object.values(cart) as number[]).reduce((a, b) => a + b, 0), [cart]);
-  
+
   const totalPrice = useMemo(() => {
     return (Object.entries(cart) as [string, number][]).reduce((total, [id, qty]) => {
       const item = INITIAL_MENU.find(m => m.id === id);
@@ -49,7 +50,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
     }, 0);
   }, [cart]);
 
-  const handleSubmitOrder = () => {
+  const handleSubmitOrder = async () => {
     if (!selectedTable) {
       alert('請先選擇桌號！');
       return;
@@ -59,6 +60,7 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
       return;
     }
 
+    setIsSubmitting(true);
     const orderItems: OrderItem[] = (Object.entries(cart) as [string, number][]).map(([id, qty]) => {
       const item = INITIAL_MENU.find(m => m.id === id)!;
       return {
@@ -69,20 +71,28 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
       };
     });
 
-    onAddOrder(selectedTable, orderItems);
-    setIsOrdered(true);
-    setCart({});
-    setTimeout(() => setIsOrdered(false), 3000);
-    setShowCart(false);
+    try {
+      await onAddOrder(selectedTable, orderItems);
+      setIsOrdered(true);
+      setCart({});
+      setShowCart(false);
+      if (!isStaffMode) {
+        setTimeout(() => setIsOrdered(false), 3000);
+      }
+    } catch (err) {
+      alert('下單失敗，請檢查網路連線');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  if (isOrdered) {
+  if (isOrdered && !isStaffMode) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-64px)] bg-white p-6 animate-in fade-in duration-500">
         <CheckCircle className="w-20 h-20 text-green-500 mb-4" />
         <h2 className="text-2xl font-bold mb-2">下單成功！</h2>
         <p className="text-slate-500 mb-8">餐點製作中，請稍候。</p>
-        <button 
+        <button
           onClick={() => setIsOrdered(false)}
           className="bg-orange-500 text-white px-8 py-3 rounded-full font-bold shadow-lg active:scale-95 transition-transform"
         >
@@ -93,41 +103,40 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
   }
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50 pb-32">
-      {/* Header */}
-      <header className="sticky top-0 z-20 bg-orange-500 text-white p-4 shadow-md no-print">
-        <div className="flex justify-between items-center max-w-lg mx-auto">
-          <h1 className="text-xl font-bold flex items-center gap-2">
-            {isStaffMode ? '櫃檯人工點餐' : '美味小吃點餐'}
-          </h1>
-          <div className="flex items-center gap-2">
-             <span className="text-sm font-medium"><MapPin size={14} className="inline mr-1" />桌號:</span>
-             {lockTable ? (
-               <span className="bg-orange-700 px-3 py-1 rounded font-black">{selectedTable}</span>
-             ) : (
-               <select 
-                value={selectedTable}
-                onChange={(e) => setSelectedTable(e.target.value)}
-                className="bg-orange-600 text-white border-none rounded px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-white"
-               >
-                 <option value="">選擇</option>
-                 {TABLES.map(t => <option key={t} value={t}>{t}</option>)}
-               </select>
-             )}
+    <div className={`flex flex-col bg-slate-50 ${isStaffMode ? 'h-full min-h-[600px]' : 'min-h-screen pb-32'}`}>
+      {/* Header - Staff 模式下隱藏，改由 OwnerDashboard 處理標題 */}
+      {!isStaffMode && (
+        <header className="sticky top-0 z-20 bg-orange-500 text-white p-4 shadow-md no-print">
+          <div className="flex justify-between items-center max-w-lg mx-auto">
+            <h1 className="text-xl font-bold flex items-center gap-2">美味小吃點餐</h1>
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium"><MapPin size={14} className="inline mr-1" />桌號:</span>
+              {lockTable ? (
+                <span className="bg-orange-700 px-3 py-1 rounded font-black">{selectedTable}</span>
+              ) : (
+                <select
+                  value={selectedTable}
+                  onChange={(e) => setSelectedTable(e.target.value)}
+                  className="bg-orange-600 text-white border-none rounded px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-white"
+                >
+                  <option value="">選擇</option>
+                  {TABLES.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              )}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Category Tabs */}
-      <div className="sticky top-[60px] z-10 bg-white border-b overflow-x-auto hide-scrollbar no-print">
+      <div className={`sticky ${isStaffMode ? 'top-0' : 'top-[60px]'} z-10 bg-white border-b overflow-x-auto hide-scrollbar no-print`}>
         <div className="flex px-4 max-w-lg mx-auto">
           {categories.map(cat => (
             <button
               key={cat}
               onClick={() => setActiveCategory(cat)}
-              className={`flex-1 py-4 text-sm font-bold transition-colors whitespace-nowrap px-6 border-b-2 ${
-                activeCategory === cat ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-500'
-              }`}
+              className={`flex-1 py-4 text-sm font-bold transition-colors whitespace-nowrap px-6 border-b-2 ${activeCategory === cat ? 'border-orange-500 text-orange-600' : 'border-transparent text-slate-500'
+                }`}
             >
               {cat}
             </button>
@@ -136,34 +145,34 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
       </div>
 
       {/* Menu List */}
-      <main className="flex-1 max-w-lg mx-auto w-full p-4 space-y-4 no-print">
+      <main className="flex-1 max-w-lg mx-auto w-full p-4 space-y-4 no-print pb-40">
         {INITIAL_MENU.filter(m => m.category === activeCategory).map(item => (
-          <div key={item.id} className="bg-white rounded-xl shadow-sm overflow-hidden flex h-32 border border-slate-100">
-            <img src={item.image} alt={item.name} className="w-32 h-full object-cover" />
+          <div key={item.id} className="bg-white rounded-xl shadow-sm overflow-hidden flex h-28 sm:h-32 border border-slate-100">
+            <img src={item.image} alt={item.name} className="w-24 sm:w-32 h-full object-cover" />
             <div className="flex-1 p-3 flex flex-col justify-between">
               <div>
-                <h3 className="font-bold text-slate-800">{item.name}</h3>
-                <p className="text-xs text-slate-500 line-clamp-1">{item.description}</p>
+                <h3 className="font-bold text-slate-800 text-sm sm:text-base">{item.name}</h3>
+                <p className="text-[10px] sm:text-xs text-slate-500 line-clamp-1">{item.description}</p>
               </div>
               <div className="flex justify-between items-end">
-                <span className="text-orange-600 font-bold font-mono text-lg">${item.price}</span>
-                <div className="flex items-center gap-3">
+                <span className="text-orange-600 font-bold font-mono text-base sm:text-lg">${item.price}</span>
+                <div className="flex items-center gap-2 sm:gap-3">
                   {cart[item.id] > 0 && (
                     <>
-                      <button 
+                      <button
                         onClick={() => removeFromCart(item.id)}
-                        className="w-8 h-8 rounded-full border border-orange-200 flex items-center justify-center text-orange-500 active:bg-orange-50"
+                        className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-orange-200 flex items-center justify-center text-orange-500 active:bg-orange-50"
                       >
-                        <Minus size={18} />
+                        <Minus size={16} />
                       </button>
-                      <span className="font-bold min-w-[1rem] text-center">{cart[item.id]}</span>
+                      <span className="font-bold min-w-[0.5rem] text-center text-sm sm:text-base">{cart[item.id]}</span>
                     </>
                   )}
-                  <button 
+                  <button
                     onClick={() => addToCart(item.id)}
-                    className="w-8 h-8 rounded-full bg-orange-500 flex items-center justify-center text-white shadow-sm active:scale-90 transition-transform"
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-orange-500 flex items-center justify-center text-white shadow-sm active:scale-90 transition-transform"
                   >
-                    <Plus size={18} />
+                    <Plus size={16} />
                   </button>
                 </div>
               </div>
@@ -174,13 +183,13 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
 
       {/* Cart Summary */}
       {cartItemsCount > 0 && (
-        <div className="fixed bottom-20 left-0 right-0 p-4 z-30 max-w-lg mx-auto no-print">
-          <div className="bg-slate-900 text-white rounded-2xl shadow-2xl overflow-hidden">
+        <div className={`fixed ${isStaffMode ? 'bottom-20' : 'bottom-20'} left-0 right-0 p-4 z-30 max-w-lg mx-auto no-print`}>
+          <div className="bg-slate-900 text-white rounded-2xl shadow-2xl overflow-hidden border border-slate-700">
             {showCart && (
-              <div className="p-4 border-b border-slate-700 max-h-[40vh] overflow-y-auto">
+              <div className="p-4 border-b border-slate-700 max-h-[30vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-4">
-                  <h4 className="font-bold flex items-center gap-2"><ShoppingCart size={18}/> 您的訂單 ({selectedTable}桌)</h4>
-                  <button onClick={() => setShowCart(false)} className="text-slate-400 hover:text-white"><ArrowLeft size={18}/></button>
+                  <h4 className="font-bold flex items-center gap-2 text-orange-400"><ShoppingCart size={18} /> 代點清單 ({selectedTable}桌)</h4>
+                  <button onClick={() => setShowCart(false)} className="text-slate-400 hover:text-white"><ArrowLeft size={18} /></button>
                 </div>
                 <div className="space-y-4">
                   {(Object.entries(cart) as [string, number][]).map(([id, qty]) => {
@@ -192,9 +201,9 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
                           <p className="text-xs text-slate-400">${item.price} x {qty}</p>
                         </div>
                         <div className="flex items-center gap-3">
-                           <button onClick={() => removeFromCart(id)} className="text-slate-400 p-1"><Minus size={16}/></button>
-                           <span className="font-bold">{qty}</span>
-                           <button onClick={() => addToCart(id)} className="text-orange-400 p-1"><Plus size={16}/></button>
+                          <button onClick={() => removeFromCart(id)} className="text-slate-400 p-1"><Minus size={16} /></button>
+                          <span className="font-bold">{qty}</span>
+                          <button onClick={() => addToCart(id)} className="text-orange-400 p-1"><Plus size={16} /></button>
                         </div>
                       </div>
                     );
@@ -211,15 +220,17 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
                   </span>
                 </div>
                 <div>
-                  <p className="text-[10px] text-slate-400 uppercase tracking-wider uppercase">總金額</p>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-wider">總金額</p>
                   <p className="text-lg font-black text-white">${totalPrice}</p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={handleSubmitOrder}
-                className="bg-orange-500 hover:bg-orange-600 px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-transform active:scale-95 shadow-lg shadow-orange-500/20"
+                disabled={isSubmitting}
+                className="bg-orange-500 hover:bg-orange-600 px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-orange-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Send size={18} /> 確認下單
+                {isSubmitting ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} />}
+                {isStaffMode ? '完成代點' : '確認下單'}
               </button>
             </div>
           </div>
