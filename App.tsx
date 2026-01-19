@@ -44,35 +44,28 @@ const Navigation: React.FC<{ isOwner: boolean }> = ({ isOwner }) => {
 };
 
 const App: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>([]);
-  const [isOwner, setIsOwner] = useState<boolean>(() => {
-    return sessionStorage.getItem('is_owner') === 'true';
+  const [orders, setOrders] = useState<Order[]>(() => {
+    const saved = localStorage.getItem('giaway_orders');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.map((o: any) => ({ ...o, createdAt: new Date(o.createdAt) }));
+      } catch (e) {
+        return [];
+      }
+    }
+    return [];
   });
 
-  // 取得當前密碼，若無則設為 88888888
+  const [isOwner, setIsOwner] = useState<boolean>(() => sessionStorage.getItem('is_owner') === 'true');
+
   const [ownerPasscode, setOwnerPasscode] = useState<string>(() => {
     const saved = localStorage.getItem('owner_passcode');
     return saved || '88888888';
   });
 
   useEffect(() => {
-    localStorage.setItem('owner_passcode', ownerPasscode);
-  }, [ownerPasscode]);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('snack_orders');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        setOrders(parsed.map((o: any) => ({ ...o, createdAt: new Date(o.createdAt) })));
-      } catch (e) {
-        console.error("Failed to parse orders", e);
-      }
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('snack_orders', JSON.stringify(orders));
+    localStorage.setItem('giaway_orders', JSON.stringify(orders));
   }, [orders]);
 
   const handleLogin = (pass: string) => {
@@ -92,12 +85,15 @@ const App: React.FC = () => {
   const handleChangePasscode = (newPass: string) => {
     if (newPass.length === 8 && /^\d+$/.test(newPass)) {
       setOwnerPasscode(newPass);
+      localStorage.setItem('owner_passcode', newPass);
       return true;
     }
     return false;
   };
 
-  const handleAddOrder = useCallback((tableNumber: string, items: OrderItem[]) => {
+  const handleAddOrder = useCallback(async (tableNumber: string, items: OrderItem[]) => {
+    await new Promise(resolve => setTimeout(resolve, 300));
+
     const newOrder: Order = {
       id: Math.random().toString(36).substr(2, 9),
       tableNumber,
@@ -106,6 +102,7 @@ const App: React.FC = () => {
       status: 'pending',
       createdAt: new Date(),
     };
+
     setOrders(prev => [...prev, newOrder]);
   }, []);
 
@@ -149,7 +146,7 @@ const App: React.FC = () => {
   );
 };
 
-const CustomerTableWrapper: React.FC<{ onAddOrder: (t: string, items: OrderItem[]) => void }> = ({ onAddOrder }) => {
+const CustomerTableWrapper: React.FC<{ onAddOrder: (t: string, items: OrderItem[]) => Promise<void> }> = ({ onAddOrder }) => {
   const { tableId } = useParams();
   return <CustomerView onAddOrder={onAddOrder} initialTable={tableId || ''} lockTable />;
 };

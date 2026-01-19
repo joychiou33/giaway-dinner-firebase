@@ -2,16 +2,23 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { MenuItem, OrderItem, Category } from '../types';
 import { INITIAL_MENU, TABLES } from '../constants';
-import { ShoppingCart, Plus, Minus, ArrowLeft, Send, CheckCircle, MapPin, Loader2 } from 'lucide-react';
+import { ShoppingCart, Plus, Minus, ArrowLeft, Send, CheckCircle, MapPin, Loader2, ChevronLeft } from 'lucide-react';
 
 interface CustomerViewProps {
-  onAddOrder: (tableNumber: string, items: OrderItem[]) => void;
+  onAddOrder: (tableNumber: string, items: OrderItem[]) => Promise<void>;
+  onBack?: () => void; // 新增：提供給 Staff 模式返回桌號選擇用
   initialTable?: string;
   isStaffMode?: boolean;
   lockTable?: boolean;
 }
 
-const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = '', isStaffMode = false, lockTable = false }) => {
+const CustomerView: React.FC<CustomerViewProps> = ({
+  onAddOrder,
+  onBack,
+  initialTable = '',
+  isStaffMode = false,
+  lockTable = false
+}) => {
   const [selectedTable, setSelectedTable] = useState(initialTable);
   const [cart, setCart] = useState<Record<string, number>>({});
   const [activeCategory, setActiveCategory] = useState<Category>('主食');
@@ -73,19 +80,22 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
 
     try {
       await onAddOrder(selectedTable, orderItems);
-      setIsOrdered(true);
-      setCart({});
-      setShowCart(false);
+      // Staff 模式下不顯示成功畫面，直接由父組件處理
       if (!isStaffMode) {
+        setIsOrdered(true);
+        setCart({});
+        setShowCart(false);
         setTimeout(() => setIsOrdered(false), 3000);
       }
     } catch (err) {
-      alert('下單失敗，請檢查網路連線');
+      console.error(err);
+      alert('下單失敗，請檢查操作');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // 顧客模式的成功畫面
   if (isOrdered && !isStaffMode) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[calc(100vh-64px)] bg-white p-6 animate-in fade-in duration-500">
@@ -103,33 +113,40 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
   }
 
   return (
-    <div className={`flex flex-col bg-slate-50 ${isStaffMode ? 'h-full min-h-[600px]' : 'min-h-screen pb-32'}`}>
-      {/* Header - Staff 模式下隱藏，改由 OwnerDashboard 處理標題 */}
-      {!isStaffMode && (
-        <header className="sticky top-0 z-20 bg-orange-500 text-white p-4 shadow-md no-print">
-          <div className="flex justify-between items-center max-w-lg mx-auto">
-            <h1 className="text-xl font-bold flex items-center gap-2">美味小吃點餐</h1>
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium"><MapPin size={14} className="inline mr-1" />桌號:</span>
-              {lockTable ? (
-                <span className="bg-orange-700 px-3 py-1 rounded font-black">{selectedTable}</span>
-              ) : (
-                <select
-                  value={selectedTable}
-                  onChange={(e) => setSelectedTable(e.target.value)}
-                  className="bg-orange-600 text-white border-none rounded px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-white"
-                >
-                  <option value="">選擇</option>
-                  {TABLES.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              )}
-            </div>
+    <div className={`flex flex-col bg-slate-50 ${isStaffMode ? 'h-full' : 'min-h-screen pb-32'}`}>
+      {/* Header - 修正：Staff 模式也要顯示，但樣式不同 */}
+      <header className={`sticky top-0 z-20 p-4 shadow-md no-print transition-colors ${isStaffMode ? 'bg-slate-800 text-white' : 'bg-orange-500 text-white'}`}>
+        <div className="flex justify-between items-center max-w-lg mx-auto">
+          <div className="flex items-center gap-2">
+            {isStaffMode && onBack && (
+              <button onClick={onBack} className="p-1 -ml-1 hover:bg-slate-700 rounded-lg transition-colors">
+                <ChevronLeft size={24} />
+              </button>
+            )}
+            <h1 className="text-lg font-bold flex items-center gap-2">
+              {isStaffMode ? '現場代點模式' : '美味小吃點餐'}
+            </h1>
           </div>
-        </header>
-      )}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium opacity-80"><MapPin size={12} className="inline mr-1" />桌號:</span>
+            {lockTable ? (
+              <span className={`px-3 py-1 rounded font-black ${isStaffMode ? 'bg-orange-500' : 'bg-orange-700'}`}>{selectedTable}</span>
+            ) : (
+              <select
+                value={selectedTable}
+                onChange={(e) => setSelectedTable(e.target.value)}
+                className="bg-white/20 text-white border-none rounded px-2 py-1 text-sm outline-none focus:ring-2 focus:ring-white"
+              >
+                <option value="" className="text-slate-800">選擇</option>
+                {TABLES.map(t => <option key={t} value={t} className="text-slate-800">{t}</option>)}
+              </select>
+            )}
+          </div>
+        </div>
+      </header>
 
       {/* Category Tabs */}
-      <div className={`sticky ${isStaffMode ? 'top-0' : 'top-[60px]'} z-10 bg-white border-b overflow-x-auto hide-scrollbar no-print`}>
+      <div className="sticky top-[60px] z-10 bg-white border-b overflow-x-auto hide-scrollbar no-print">
         <div className="flex px-4 max-w-lg mx-auto">
           {categories.map(cat => (
             <button
@@ -183,12 +200,14 @@ const CustomerView: React.FC<CustomerViewProps> = ({ onAddOrder, initialTable = 
 
       {/* Cart Summary */}
       {cartItemsCount > 0 && (
-        <div className={`fixed ${isStaffMode ? 'bottom-20' : 'bottom-20'} left-0 right-0 p-4 z-30 max-w-lg mx-auto no-print`}>
+        <div className="fixed bottom-20 left-0 right-0 p-4 z-30 max-w-lg mx-auto no-print">
           <div className="bg-slate-900 text-white rounded-2xl shadow-2xl overflow-hidden border border-slate-700">
             {showCart && (
               <div className="p-4 border-b border-slate-700 max-h-[30vh] overflow-y-auto">
                 <div className="flex justify-between items-center mb-4">
-                  <h4 className="font-bold flex items-center gap-2 text-orange-400"><ShoppingCart size={18} /> 代點清單 ({selectedTable}桌)</h4>
+                  <h4 className="font-bold flex items-center gap-2 text-orange-400">
+                    <ShoppingCart size={18} /> {isStaffMode ? '代點明細' : '我的購物車'} ({selectedTable}桌)
+                  </h4>
                   <button onClick={() => setShowCart(false)} className="text-slate-400 hover:text-white"><ArrowLeft size={18} /></button>
                 </div>
                 <div className="space-y-4">
