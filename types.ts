@@ -8,6 +8,7 @@ export interface MenuItem {
   category: Category;
   description: string;
   image: string;
+  available?: boolean; // 供應狀態：true=供應中, false=售完
 }
 
 export interface OrderItem {

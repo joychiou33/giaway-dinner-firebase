@@ -18,7 +18,12 @@ interface OwnerDashboardProps {
 const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus, onClearTable, onDeleteOrder, onAddOrder, onLogout, onChangePasscode }) => {
   const [activeTab, setActiveTab] = React.useState<'kitchen' | 'billing' | 'manual' | 'history' | 'settings'>('kitchen');
   const [confirmingTable, setConfirmingTable] = useState<string | null>(null);
+  // [修改] 狀態分離：selectedOrder 只負責彈窗，printingOrder 只負責列印
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [printingOrder, setPrintingOrder] = useState<Order | null>(null); // 新增這行
+  // [新增] 用來判斷是否正在列印 QR Code
+  const [isPrintingQR, setIsPrintingQR] = useState(false);
+
   const [manualTable, setManualTable] = useState<string | null>(null);
 
   const [newPass, setNewPass] = useState('');
@@ -30,10 +35,31 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
   const [endDate, setEndDate] = useState(todayStr);
 
   const [autoPrintEnabled, setAutoPrintEnabled] = useState<boolean>(() => localStorage.getItem('auto_print_enabled') === 'true');
+  // [補回 1] 紀錄已經自動列印過的訂單 ID，避免重複列印
+  const autoPrintedIds = useRef<Set<string>>(new Set());
 
   // 計算待處理、製作中的訂單，確保每次 orders 改變都會重新計算
   const pendingOrders = useMemo(() => orders.filter(o => o.status === 'pending').sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()), [orders]);
   const preparingOrders = useMemo(() => orders.filter(o => o.status === 'preparing'), [orders]);
+
+  // [補回 2] 自動印單的邏輯：監聽 pendingOrders
+  useEffect(() => {
+    if (!autoPrintEnabled) return;
+
+    // 找出還沒列印過的待處理訂單
+    const newOrders = pendingOrders.filter(o => !autoPrintedIds.current.has(o.id));
+
+    if (newOrders.length > 0) {
+      // 標記為已列印
+      newOrders.forEach(o => autoPrintedIds.current.add(o.id));
+
+      // 取出最新的一筆進行列印
+      // 注意：瀏覽器限制一次只能呼叫一個 window.print()，所以如果有大量訂單同時進來，
+      // 這裡只會觸發最後一筆，實務上通常足夠，或需要排隊機制。
+      const latestOrder = newOrders[newOrders.length - 1];
+      handlePrint(latestOrder);
+    }
+  }, [pendingOrders, autoPrintEnabled]);
 
   const activeTables = useMemo(() => {
     const tableMap: Record<string, TableTotal> = {};
@@ -62,8 +88,9 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
   const totalFilteredRevenue = useMemo(() => filteredHistoryOrders.reduce((acc, o) => acc + o.totalPrice, 0), [filteredHistoryOrders]);
 
   const handlePrint = (order: Order) => {
-    setSelectedOrder(order);
-    setTimeout(() => window.print(), 150);
+    setIsPrintingQR(false); // [新增] 確保不是印 QR
+    setPrintingOrder(order);
+    setTimeout(() => window.print(), 100);
   };
 
   const handleUpdatePasscode = (e: React.FormEvent) => {
@@ -152,6 +179,45 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
             {passMessage && <p className={`text-xs font-bold flex items-center gap-1 ${passMessage.type === 'success' ? 'text-green-600' : 'text-red-500'}`}>{passMessage.type === 'success' && <Check size={14} />} {passMessage.text}</p>}
           </div>
         </form>
+      </section>
+      {/* [補回 3] 桌碼 QR Code 管理區塊 */}
+      <section className="space-y-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center no-print">
+          <div>
+            <h2 className="text-xl font-black text-slate-800">桌碼管理</h2>
+            <p className="text-slate-500 text-sm">列印桌號專屬點餐 QR Code</p>
+          </div>
+          <button
+            onClick={() => {
+              // 1. 設定為列印 QR 模式
+              setIsPrintingQR(true);
+              setPrintingOrder(null); // 確保不會印到訂單
+              // 2. 延遲列印 (等待渲染)
+              setTimeout(() => {
+                window.print();
+                // 3. 列印後(或很短時間後)復原狀態，以免影響下次操作
+                setTimeout(() => setIsPrintingQR(false), 500);
+              }, 100);
+            }}
+            className="bg-orange-500 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 hover:bg-orange-600 shadow-lg shadow-orange-500/20 transition-all"
+          >
+            <Printer size={18} /> 列印所有桌碼
+          </button>
+        </div>
+
+        {/* QR Code 列表網格 */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+          {TABLES.map(table => {
+            // 生成 QR Code 連結，指向您的客戶端網址
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${window.location.origin}${window.location.pathname}#/customer/table/${table}`)}`;
+            return (
+              <div key={table} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
+                <img src={qrUrl} alt={`QR Table ${table}`} className="w-full aspect-square mb-3" />
+                <p className="text-xs font-bold text-slate-600 mb-1">{table === '外帶' ? '門口外帶區' : `第 ${table} 桌`}</p>
+              </div>
+            );
+          })}
+        </div>
       </section>
     </div>
   );
@@ -310,18 +376,86 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
       </main>
 
       <OrderDetailsModal />
-      <div className="print-only text-black bg-white w-full max-w-[80mm] mx-auto p-4">
-        {selectedOrder && (
-          <div className="py-4">
-            <div className="text-center mb-4 border-b pb-2"><h2 className="text-xl font-bold">點餐清單</h2><p className="text-[10px]">{selectedOrder.createdAt.toLocaleString()}</p></div>
-            <div className="font-black text-3xl mb-4 text-center">桌號: {selectedOrder.tableNumber}</div>
-            <div className="border-b border-black py-2 mb-4">
-              {selectedOrder.items.map((item, idx) => (<div key={idx} className="flex justify-between mb-1"><span className="font-bold text-lg">{item.name} x {item.quantity}</span></div>))}
+      {/* [修改完成] 萬用列印區塊：支援「訂單兩聯」與「桌碼 QR」, 改讀取 printingOrder，並改為連續列印 (無強制分頁) */}
+      <div className="print-only text-black bg-white w-full mx-auto">
+
+        {/* --- 情境 A: 列印訂單 (兩聯式) --- */}
+        {printingOrder && !isPrintingQR && (
+          <div className="max-w-[80mm] mx-auto p-2 text-sm font-mono">
+            {/* 第一聯：顧客/櫃台聯 */}
+            <div className="pb-4">
+              <div className="text-center mb-2 border-b-2 border-black pb-2">
+                <h2 className="text-xl font-bold">訂單確認聯</h2>
+                <p className="text-[10px] mt-1">{printingOrder.createdAt.toLocaleString()}</p>
+                <p className="text-[10px]">單號: {printingOrder.id.slice(-6)}</p>
+              </div>
+
+              <div className="flex justify-between items-end mb-2">
+                <span className="text-lg font-bold">桌號:</span>
+                <span className="text-4xl font-black">{printingOrder.tableNumber}</span>
+              </div>
+
+              <div className="border-t border-b border-dashed border-black py-2 mb-2 space-y-1">
+                {printingOrder.items.map((item, idx) => (
+                  <div key={idx} className="flex justify-between">
+                    <span className="font-bold text-base">{item.name}</span>
+                    <span className="font-bold text-base">x {item.quantity}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between font-bold text-xl mt-2">
+                <span>總計:</span>
+                <span>${printingOrder.totalPrice}</span>
+              </div>
             </div>
-            <div className="flex justify-between font-bold text-xl"><span>總金額: ${selectedOrder.totalPrice}</span></div>
+
+            {/* 剪裁線 */}
+            <div className="w-full border-b-4 border-dashed border-black my-6 relative">
+              <span className="absolute left-1/2 -top-3 -translate-x-1/2 bg-white px-2 text-[10px] text-slate-500">剪裁線</span>
+            </div>
+
+            {/* 第二聯：廚房備餐聯 */}
+            <div className="pt-2">
+              <div className="text-center mb-2 border-b border-black pb-1">
+                <h2 className="text-xl font-black">廚房製作單</h2>
+              </div>
+              <div className="flex justify-between items-center mb-4 bg-black text-white p-2 rounded-sm">
+                <span className="text-xl font-bold">桌號</span>
+                <span className="text-4xl font-black">{printingOrder.tableNumber}</span>
+              </div>
+              <div className="space-y-4">
+                {printingOrder.items.map((item, idx) => (
+                  <div key={idx} className="flex justify-between items-center border-b border-slate-300 pb-2">
+                    <span className="font-black text-2xl w-2/3 leading-tight">{item.name}</span>
+                    <span className="font-black text-3xl">x{item.quantity}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* --- 情境 B: 列印 QR Code (A4 網格排版) --- */}
+        {isPrintingQR && (
+          <div className="w-full p-8">
+            <h1 className="text-2xl font-bold text-center mb-6 border-b pb-4">桌號 QR Code 配置圖</h1>
+            <div className="grid grid-cols-3 gap-8">
+              {TABLES.map(table => {
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(`${window.location.origin}${window.location.pathname}#/customer/table/${table}`)}`;
+                return (
+                  <div key={table} className="border-2 border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center aspect-[3/4]">
+                    <img src={qrUrl} alt={`QR ${table}`} className="w-full mb-4" />
+                    <div className="text-4xl font-black">{table}</div>
+                    <div className="text-sm text-slate-500 mt-2">掃描點餐</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
+
     </div>
   );
 

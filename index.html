@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title> Giaway Dinner | 專賣店雲端系統</title>
+  <title>Giaway Dinner | 專賣店雲端系統</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <style>
@@ -21,29 +21,45 @@
       scrollbar-width: none;
     }
 
-    /* 列印樣式處理 */
+    /* --- 列印核心樣式 --- */
     @media print {
-      body {
-        background: white !important;
+      @page {
+        margin: 0;
+        /* 關鍵：歸零邊距，避免第二頁空白 */
+        size: auto;
       }
 
+      html,
+      body {
+        background: white !important;
+        width: 100%;
+        height: auto !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+      }
+
+      /* 隱藏所有介面元素 */
       nav,
       header,
       button,
-      .no-print {
+      .no-print,
+      #root>div>main {
         display: none !important;
       }
 
+      /* 顯示並定位列印區塊 */
       .print-only {
         display: block !important;
-      }
-
-      .print-container {
-        width: 100%;
-        border: none !important;
-        box-shadow: none !important;
-        margin: 0;
-        padding: 0;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        z-index: 9999;
+        /* 確保在最上層 */
+        background-color: white;
       }
     }
 
@@ -51,6 +67,7 @@
       display: none;
     }
   </style>
+
   <script type="importmap">
   {
     "imports": {
@@ -58,14 +75,12 @@
       "react/": "https://esm.sh/react@19.0.0/",
       "react-dom": "https://esm.sh/react-dom@19.0.0",
       "react-dom/client": "https://esm.sh/react-dom@19.0.0/client",
-      
       "react-router-dom": "https://esm.sh/react-router-dom@7.1.1?external=react,react-dom",
       "lucide-react": "https://esm.sh/lucide-react@0.469.0?external=react,react-dom",
-      
-      "firebase/app": "https://esm.sh/firebase@12.8.0/app",
-      "firebase/firestore": "https://esm.sh/firebase@12.8.0/firestore",
-      "firebase/auth": "https://esm.sh/firebase@12.8.0/auth",
-      "firebase/analytics": "https://esm.sh/firebase@12.8.0/analytics"
+      "firebase/app": "https://esm.sh/firebase@10.8.0/app",
+      "firebase/firestore": "https://esm.sh/firebase@10.8.0/firestore",
+      "firebase/auth": "https://esm.sh/firebase@10.8.0/auth",
+      "firebase/analytics": "https://esm.sh/firebase@10.8.0/analytics"
     }
   }
   </script>
@@ -77,11 +92,3 @@
 </body>
 
 </html>
-
-<!--  
-    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "react": "https://esm.sh/react@^19.2.3",
-    "react-router-dom": "https://esm.sh/react-router-dom@^7.12.0",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0"  
-    -->
