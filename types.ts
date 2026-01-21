@@ -1,4 +1,3 @@
-
 export type Category = '主食' | '小菜' | '湯品' | '飲料';
 
 export interface MenuItem {
@@ -8,9 +7,12 @@ export interface MenuItem {
   category: Category;
   description: string;
   image: string;
-  available?: boolean; // 供應狀態：true=供應中, false=售完
+  available: boolean;
+  // [新增] 更新時間欄位 (Firestore Timestamp 或 Date)
+  updatedAt?: any;
 }
 
+// ... 其他 interface (OrderItem, Order, TableTotal) 維持不變 ...
 export interface OrderItem {
   menuItemId: string;
   name: string;

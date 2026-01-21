@@ -1,13 +1,14 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
-import { Order, OrderItem, OrderStatus } from './types';
+import { Order, OrderItem, OrderStatus, MenuItem } from './types';
+import { INITIAL_MENU } from './constants';
 import CustomerView from './components/CustomerView';
 import OwnerDashboard from './components/OwnerDashboard';
 import OwnerLogin from './components/OwnerLogin';
 import { Store, ShoppingBag, Lock } from 'lucide-react';
-// 使用 dbService 統一管理 Firebase 操作
 import { dbService } from './services/dbService';
+// [修正] 補上 setDoc
+import { getFirestore, collection, getDocs, addDoc, updateDoc, deleteDoc, writeBatch, doc, setDoc } from 'firebase/firestore';
 
 const Navigation: React.FC<{ isOwner: boolean }> = ({ isOwner }) => {
   const navigate = useNavigate();
@@ -48,23 +49,131 @@ const Navigation: React.FC<{ isOwner: boolean }> = ({ isOwner }) => {
 const App: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
   const [isOwner, setIsOwner] = useState<boolean>(() => sessionStorage.getItem('is_owner') === 'true');
+  const [menuItems, setMenuItems] = useState<MenuItem[]>(INITIAL_MENU);
 
   const [ownerPasscode, setOwnerPasscode] = useState<string>(() => {
     const saved = localStorage.getItem('owner_passcode');
     return saved || '88888888';
   });
 
-  // 使用 Firebase 即時監聽訂單變動
   useEffect(() => {
     const unsubscribe = dbService.subscribeToOrders((firebaseOrders) => {
       setOrders(firebaseOrders);
-      // 同步到 localStorage 作為備份
       localStorage.setItem('giaway_orders', JSON.stringify(firebaseOrders));
     });
-
-    // 清理監聽器
     return () => unsubscribe();
   }, []);
+
+  // 菜單讀取與初始化
+  useEffect(() => {
+    const fetchMenu = async () => {
+      const db = getFirestore();
+      try {
+        const querySnapshot = await getDocs(collection(db, "menuItems"));
+
+        if (querySnapshot.empty) {
+          console.log("⚠️ 資料庫是空的，開始寫入初始菜單...");
+          const batch = writeBatch(db);
+          const newItems: MenuItem[] = [];
+
+          INITIAL_MENU.forEach((item) => {
+            const docRef = doc(collection(db, "menuItems"));
+            // 這裡已經有正確寫入 ID，保持不變，但補上 updatedAt
+            const itemWithFirebaseId = {
+              ...item,
+              id: docRef.id,
+              available: true,
+              updatedAt: new Date() // [新增] 初始資料也加上時間
+            };
+            batch.set(docRef, itemWithFirebaseId);
+            newItems.push(itemWithFirebaseId);
+          });
+
+          await batch.commit();
+          console.log("✅ 初始菜單寫入完成！");
+          setMenuItems(newItems);
+        } else {
+          console.log("🔄 菜單資料庫已有資料，載入中...");
+          const items = querySnapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              ...data,
+              // 如果舊資料沒有 available，預設為 true
+              available: data.available ?? true
+            } as MenuItem;
+          });
+          setMenuItems(items);
+        }
+      } catch (error) {
+        console.error("讀取菜單失敗:", error);
+      }
+    };
+
+    fetchMenu();
+  }, []);
+
+  // --------------------------------------------------------
+  // [修正重點] 新增菜單 - 明確寫入 id 和 updatedAt
+  // --------------------------------------------------------
+  const handleAddMenu = async (item: Omit<MenuItem, 'id'>) => {
+    const db = getFirestore();
+    try {
+      // 1. 先產生一個新的 Document Reference (為了拿到自動產生的 ID)
+      const newDocRef = doc(collection(db, "menuItems"));
+
+      // 2. 準備要寫入的資料，明確包含 id 和 updatedAt
+      const newItemData: MenuItem = {
+        ...item,
+        id: newDocRef.id, // [關鍵] 把 ID 寫進資料欄位
+        updatedAt: new Date() // [關鍵] 加入目前時間
+      };
+
+      // 3. 使用 setDoc 寫入指定 ID 的位置
+      await setDoc(newDocRef, newItemData);
+
+      // 4. 更新本地 State
+      setMenuItems(prev => [...prev, newItemData]);
+      console.log("新增成功，ID:", newDocRef.id);
+    } catch (e) {
+      console.error("新增失敗:", e);
+      alert("新增失敗，請檢查網路");
+    }
+  };
+
+  // --------------------------------------------------------
+  // [修正重點] 更新菜單 - 補上 updatedAt
+  // --------------------------------------------------------
+  const handleUpdateMenu = async (id: string, updates: Partial<MenuItem>) => {
+    const db = getFirestore();
+    try {
+      const menuRef = doc(db, "menuItems", id);
+
+      // 準備更新資料，自動補上 updatedAt
+      const updatesWithTimestamp = {
+        ...updates,
+        updatedAt: new Date()
+      };
+
+      await updateDoc(menuRef, updatesWithTimestamp);
+
+      setMenuItems(prev => prev.map(item => item.id === id ? { ...item, ...updatesWithTimestamp } : item));
+    } catch (e) {
+      console.error("更新失敗:", e);
+      alert("更新失敗");
+    }
+  };
+
+  const handleDeleteMenu = async (id: string) => {
+    const db = getFirestore();
+    try {
+      await deleteDoc(doc(db, "menuItems", id));
+      setMenuItems(prev => prev.filter(item => item.id !== id));
+    } catch (e) {
+      console.error("刪除失敗:", e);
+      alert("刪除失敗");
+    }
+  };
 
   const handleLogin = (pass: string) => {
     if (pass === ownerPasscode) {
@@ -111,7 +220,6 @@ const App: React.FC = () => {
 
   const clearTable = useCallback(async (tableNumber: string) => {
     try {
-      // 找出該桌所有未結帳的訂單
       const tablePendingOrders = orders.filter(o =>
         o.tableNumber === tableNumber &&
         o.status !== 'cancelled' &&
@@ -143,8 +251,24 @@ const App: React.FC = () => {
     <Router>
       <div className="pb-16 min-h-screen">
         <Routes>
-          <Route path="/customer" element={<CustomerView onAddOrder={handleAddOrder} />} />
-          <Route path="/customer/table/:tableId" element={<CustomerTableWrapper onAddOrder={handleAddOrder} />} />
+          <Route
+            path="/customer"
+            element={
+              <CustomerView
+                onAddOrder={handleAddOrder}
+                menuItems={menuItems}
+              />
+            }
+          />
+          <Route
+            path="/customer/table/:tableId"
+            element={
+              <CustomerTableWrapper
+                onAddOrder={handleAddOrder}
+                menuItems={menuItems}
+              />
+            }
+          />
           <Route
             path="/owner/*"
             element={isOwner ? (
@@ -156,6 +280,10 @@ const App: React.FC = () => {
                 onAddOrder={handleAddOrder}
                 onLogout={handleLogout}
                 onChangePasscode={handleChangePasscode}
+                menuItems={menuItems}
+                onAddMenu={handleAddMenu}
+                onUpdateMenu={handleUpdateMenu}
+                onDeleteMenu={handleDeleteMenu}
               />
             ) : <Navigate to="/login" replace />}
           />
@@ -168,9 +296,12 @@ const App: React.FC = () => {
   );
 };
 
-const CustomerTableWrapper: React.FC<{ onAddOrder: (t: string, items: OrderItem[]) => Promise<void> }> = ({ onAddOrder }) => {
+const CustomerTableWrapper: React.FC<{
+  onAddOrder: (t: string, items: OrderItem[]) => Promise<void>;
+  menuItems: MenuItem[];
+}> = ({ onAddOrder, menuItems }) => {
   const { tableId } = useParams();
-  return <CustomerView onAddOrder={onAddOrder} initialTable={tableId || ''} lockTable />;
+  return <CustomerView onAddOrder={onAddOrder} initialTable={tableId || ''} lockTable menuItems={menuItems} />;
 };
 
 export default App;

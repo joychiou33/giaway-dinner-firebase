@@ -1,9 +1,11 @@
-
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { Order, OrderStatus, TableTotal, OrderItem } from '../types';
+import { Order, OrderStatus, TableTotal, OrderItem, MenuItem, Category } from '../types';
 import { TABLES } from '../constants';
-import { Clock, ChefHat, CreditCard, XCircle, PlusCircle, LayoutDashboard, ReceiptText, AlertCircle, History, Printer, X, Settings2, BellRing, BellOff, HelpCircle, FileDown, Calendar, QrCode, LogOut, ShieldEllipsis, KeyRound, Check, Trash2, ShoppingCart, MapPin, ArrowRight } from 'lucide-react';
+import { Clock, ChefHat, CreditCard, PlusCircle, LayoutDashboard, ReceiptText, AlertCircle, History, Printer, X, BellRing, BellOff, LogOut, ShieldEllipsis, KeyRound, Check, Trash2, ShoppingCart, MapPin, Utensils, Edit, Ban, CheckCircle2, Image as ImageIcon, QrCode } from 'lucide-react';
 import CustomerView from './CustomerView';
+
+// 定義分類列表供下拉選單使用
+const CATEGORIES: Category[] = ['主食', '小菜', '湯品', '飲料'];
 
 interface OwnerDashboardProps {
   orders: Order[];
@@ -13,15 +15,24 @@ interface OwnerDashboardProps {
   onAddOrder: (tableNumber: string, items: OrderItem[]) => Promise<void>;
   onLogout: () => void;
   onChangePasscode: (newPass: string) => boolean;
+
+  // 菜單管理相關 Props
+  menuItems?: MenuItem[];
+  onAddMenu: (item: Omit<MenuItem, 'id'>) => Promise<void>;
+  onUpdateMenu: (id: string, updates: Partial<MenuItem>) => Promise<void>;
+  onDeleteMenu: (id: string) => Promise<void>;
 }
 
-const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus, onClearTable, onDeleteOrder, onAddOrder, onLogout, onChangePasscode }) => {
-  const [activeTab, setActiveTab] = React.useState<'kitchen' | 'billing' | 'manual' | 'history' | 'settings'>('kitchen');
+const OwnerDashboard: React.FC<OwnerDashboardProps> = ({
+  orders, onUpdateStatus, onClearTable, onDeleteOrder, onAddOrder, onLogout, onChangePasscode,
+  menuItems = [],
+  onAddMenu, onUpdateMenu, onDeleteMenu
+}) => {
+  const [activeTab, setActiveTab] = React.useState<'kitchen' | 'billing' | 'manual' | 'history' | 'settings' | 'menu'>('kitchen');
   const [confirmingTable, setConfirmingTable] = useState<string | null>(null);
-  // [修改] 狀態分離：selectedOrder 只負責彈窗，printingOrder 只負責列印
+
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
-  const [printingOrder, setPrintingOrder] = useState<Order | null>(null); // 新增這行
-  // [新增] 用來判斷是否正在列印 QR Code
+  const [printingOrder, setPrintingOrder] = useState<Order | null>(null);
   const [isPrintingQR, setIsPrintingQR] = useState(false);
 
   const [manualTable, setManualTable] = useState<string | null>(null);
@@ -35,27 +46,37 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
   const [endDate, setEndDate] = useState(todayStr);
 
   const [autoPrintEnabled, setAutoPrintEnabled] = useState<boolean>(() => localStorage.getItem('auto_print_enabled') === 'true');
-  // [補回 1] 紀錄已經自動列印過的訂單 ID，避免重複列印
   const autoPrintedIds = useRef<Set<string>>(new Set());
 
-  // 計算待處理、製作中的訂單，確保每次 orders 改變都會重新計算
+  // --- 菜單管理 State ---
+  const [isMenuModalOpen, setIsMenuModalOpen] = useState(false);
+  const [editingMenuItem, setEditingMenuItem] = useState<MenuItem | null>(null);
+
+  const [menuForm, setMenuForm] = useState<{
+    name: string;
+    price: string;
+    category: Category;
+    description: string;
+    image: string;
+    available: boolean;
+  }>({
+    name: '',
+    price: '',
+    category: '主食',
+    description: '',
+    image: '',
+    available: true
+  });
+
   const pendingOrders = useMemo(() => orders.filter(o => o.status === 'pending').sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime()), [orders]);
   const preparingOrders = useMemo(() => orders.filter(o => o.status === 'preparing'), [orders]);
 
-  // [補回 2] 自動印單的邏輯：監聽 pendingOrders
   useEffect(() => {
     if (!autoPrintEnabled) return;
-
-    // 找出還沒列印過的待處理訂單
     const newOrders = pendingOrders.filter(o => !autoPrintedIds.current.has(o.id));
 
     if (newOrders.length > 0) {
-      // 標記為已列印
       newOrders.forEach(o => autoPrintedIds.current.add(o.id));
-
-      // 取出最新的一筆進行列印
-      // 注意：瀏覽器限制一次只能呼叫一個 window.print()，所以如果有大量訂單同時進來，
-      // 這裡只會觸發最後一筆，實務上通常足夠，或需要排隊機制。
       const latestOrder = newOrders[newOrders.length - 1];
       handlePrint(latestOrder);
     }
@@ -63,7 +84,6 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
 
   const activeTables = useMemo(() => {
     const tableMap: Record<string, TableTotal> = {};
-    // 只顯示已完成出餐（completed）的訂單，pending 和 preparing 不應出現在結帳清單
     orders.filter(o => o.status === 'completed').forEach(o => {
       const tNum = o.tableNumber || '未知';
       if (!tableMap[tNum]) {
@@ -88,9 +108,12 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
   const totalFilteredRevenue = useMemo(() => filteredHistoryOrders.reduce((acc, o) => acc + o.totalPrice, 0), [filteredHistoryOrders]);
 
   const handlePrint = (order: Order) => {
-    setIsPrintingQR(false); // [新增] 確保不是印 QR
+    setIsPrintingQR(false);
     setPrintingOrder(order);
-    setTimeout(() => window.print(), 100);
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => setPrintingOrder(null), 500);
+    }, 100);
   };
 
   const handleUpdatePasscode = (e: React.FormEvent) => {
@@ -111,7 +134,195 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
     }
   };
 
-  const ManualOrderSection = () => {
+  const handleOpenMenuModal = (item?: MenuItem) => {
+    if (item) {
+      setEditingMenuItem(item);
+      setMenuForm({
+        name: item.name,
+        price: item.price.toString(),
+        category: item.category,
+        description: item.description,
+        image: item.image,
+        available: item.available
+      });
+    } else {
+      setEditingMenuItem(null);
+      setMenuForm({ name: '', price: '', category: '主食', description: '', image: '', available: true });
+    }
+    setIsMenuModalOpen(true);
+  };
+
+  const handleSaveMenu = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const price = parseInt(menuForm.price);
+    if (!menuForm.name || isNaN(price)) return;
+
+    const menuItemData = {
+      name: menuForm.name,
+      price: price,
+      category: menuForm.category,
+      description: menuForm.description,
+      image: menuForm.image,
+      available: menuForm.available
+    };
+
+    if (editingMenuItem) {
+      await onUpdateMenu(editingMenuItem.id, menuItemData);
+    } else {
+      await onAddMenu(menuItemData);
+    }
+    setIsMenuModalOpen(false);
+  };
+
+  // -------------------------------------------------------------------------
+  // Render Functions
+  // -------------------------------------------------------------------------
+
+  const renderMenuManagementSection = () => {
+    return (
+      <div className="max-w-6xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500">
+        <div className="flex justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+          <div>
+            <h2 className="text-xl font-black text-slate-800 flex items-center gap-2"><Utensils className="text-orange-500" /> 菜單管理</h2>
+            <p className="text-slate-500 text-sm">管理餐點、價格、圖片與供應狀態</p>
+          </div>
+          <button onClick={() => handleOpenMenuModal()} className="bg-slate-900 text-white px-4 py-2 rounded-xl font-bold flex items-center gap-2 hover:bg-slate-800 transition-all">
+            <PlusCircle size={18} /> 新增餐點
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {menuItems.map(item => (
+            <div key={item.id} className={`bg-white rounded-xl border-2 shadow-sm flex overflow-hidden group transition-all ${item.available ? 'border-transparent' : 'border-slate-200 bg-slate-50 opacity-75'}`}>
+              <div className="w-1/3 bg-slate-100 relative">
+                <img
+                  src={item.image || "https://placehold.co/150x150?text=No+Image"}
+                  alt={item.name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => (e.currentTarget.src = 'https://placehold.co/150x150?text=Error')}
+                />
+                {!item.available && <div className="absolute inset-0 bg-black/50 flex items-center justify-center text-white font-bold text-xs">已停售</div>}
+              </div>
+
+              <div className="w-2/3 p-4 flex flex-col justify-between">
+                <div>
+                  <div className="flex justify-between items-start mb-1">
+                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{item.category}</span>
+                    {item.available ? <CheckCircle2 size={14} className="text-green-500" /> : <Ban size={14} className="text-slate-300" />}
+                  </div>
+                  <h3 className="font-black text-slate-800 leading-tight mb-1">{item.name}</h3>
+                  <p className="text-xs text-slate-400 line-clamp-1">{item.description}</p>
+                </div>
+
+                <div className="flex justify-between items-end mt-3">
+                  <span className="text-xl font-black text-orange-600">${item.price}</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => onUpdateMenu(item.id, { available: !item.available })}
+                      className={`p-1.5 rounded-lg transition-colors ${item.available ? 'text-red-400 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}
+                      title={item.available ? "設為停售" : "重新上架"}
+                    >
+                      {item.available ? <Ban size={16} /> : <CheckCircle2 size={16} />}
+                    </button>
+                    <button onClick={() => handleOpenMenuModal(item)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg"><Edit size={16} /></button>
+
+                    {/* [修改] 垃圾桶按鈕：阻止冒泡，直接刪除，不跳 Confirm */}
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation(); // 防止觸發外層 onClick (如: 打開編輯)
+                        onDeleteMenu(item.id); // 直接執行刪除
+                      }}
+                      className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {isMenuModalOpen && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+            <div className="bg-white w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+              <div className="p-4 border-b flex justify-between items-center bg-slate-50">
+                <h3 className="font-bold text-lg">{editingMenuItem ? '編輯餐點' : '新增餐點'}</h3>
+                <button onClick={() => setIsMenuModalOpen(false)}><X size={20} /></button>
+              </div>
+              <form onSubmit={handleSaveMenu} className="p-6 space-y-4 max-h-[80vh] overflow-y-auto">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="col-span-1 space-y-2">
+                    <div className="aspect-square rounded-xl bg-slate-100 overflow-hidden border border-slate-200 relative group flex items-center justify-center">
+                      {menuForm.image ? (
+                        <img
+                          src={menuForm.image}
+                          alt="Preview"
+                          className="w-full h-full object-cover"
+                          onError={(e) => (e.currentTarget.src = 'https://placehold.co/150x150?text=Error')}
+                        />
+                      ) : (
+                        <ImageIcon className="text-slate-300 w-8 h-8" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="col-span-2 space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500">餐點名稱</label>
+                      <input required type="text" value={menuForm.name} onChange={e => setMenuForm({ ...menuForm, name: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold outline-none focus:ring-2 focus:ring-orange-500" placeholder="例如：招牌火雞肉飯" />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500">價格</label>
+                        <input required type="number" value={menuForm.price} onChange={e => setMenuForm({ ...menuForm, price: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold outline-none focus:ring-2 focus:ring-orange-500" placeholder="0" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500">分類</label>
+                        <select value={menuForm.category} onChange={e => setMenuForm({ ...menuForm, category: e.target.value as Category })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 font-bold outline-none focus:ring-2 focus:ring-orange-500">
+                          {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">圖片連結 (URL)</label>
+                  <div className="flex items-center gap-2">
+                    <ImageIcon size={16} className="text-slate-400" />
+                    <input type="text" value={menuForm.image} onChange={e => setMenuForm({ ...menuForm, image: e.target.value })} className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500" placeholder="https://..." />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-500">餐點描述</label>
+                  <textarea rows={2} value={menuForm.description} onChange={e => setMenuForm({ ...menuForm, description: e.target.value })} className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-orange-500" placeholder="簡單介紹這道料理的特色..." />
+                </div>
+
+                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
+                  <input
+                    type="checkbox"
+                    id="available"
+                    checked={menuForm.available}
+                    onChange={e => setMenuForm({ ...menuForm, available: e.target.checked })}
+                    className="w-5 h-5 accent-orange-500"
+                  />
+                  <label htmlFor="available" className="font-bold text-slate-700 cursor-pointer select-none">目前可販售 (上架中)</label>
+                </div>
+
+                <button type="submit" className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800 transition-all mt-4">
+                  {editingMenuItem ? '儲存變更' : '確認新增'}
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderManualOrderSection = () => {
     if (!manualTable) {
       return (
         <div className="max-w-4xl mx-auto p-6 animate-in fade-in duration-300">
@@ -141,6 +352,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
     return (
       <div className="h-full flex flex-col animate-in slide-in-from-right-4 duration-300">
         <CustomerView
+          menuItems={menuItems}
           onAddOrder={async (t, i) => {
             await onAddOrder(t, i);
             setManualTable(null);
@@ -155,7 +367,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
     );
   };
 
-  const SettingsSection = () => (
+  const renderSettingsSection = () => (
     <div className="max-w-4xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
       <section className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 no-print">
         <div className="flex items-center gap-3 mb-6">
@@ -180,7 +392,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
           </div>
         </form>
       </section>
-      {/* [補回 3] 桌碼 QR Code 管理區塊 */}
+
       <section className="space-y-6">
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex justify-between items-center no-print">
           <div>
@@ -189,13 +401,10 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
           </div>
           <button
             onClick={() => {
-              // 1. 設定為列印 QR 模式
               setIsPrintingQR(true);
-              setPrintingOrder(null); // 確保不會印到訂單
-              // 2. 延遲列印 (等待渲染)
+              setPrintingOrder(null);
               setTimeout(() => {
                 window.print();
-                // 3. 列印後(或很短時間後)復原狀態，以免影響下次操作
                 setTimeout(() => setIsPrintingQR(false), 500);
               }, 100);
             }}
@@ -204,11 +413,8 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
             <Printer size={18} /> 列印所有桌碼
           </button>
         </div>
-
-        {/* QR Code 列表網格 */}
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {TABLES.map(table => {
-            // 生成 QR Code 連結，指向您的客戶端網址
             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`${window.location.origin}${window.location.pathname}#/customer/table/${table}`)}`;
             return (
               <div key={table} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col items-center text-center">
@@ -245,6 +451,8 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
         <nav className="flex bg-white border-b shadow-sm shrink-0 no-print overflow-x-auto">
           <button onClick={() => setActiveTab('kitchen')} className={`flex-1 min-w-[80px] py-3 font-bold transition-all border-b-4 ${activeTab === 'kitchen' ? 'border-orange-500 text-orange-600 bg-orange-50' : 'border-transparent text-slate-400'}`}><ChefHat size={18} className="mx-auto" /><span className="text-[10px] block">製作進度</span></button>
           <button onClick={() => setActiveTab('billing')} className={`flex-1 min-w-[80px] py-3 font-bold transition-all border-b-4 ${activeTab === 'billing' ? 'border-orange-500 text-orange-600 bg-orange-50' : 'border-transparent text-slate-400'}`}><ReceiptText size={18} className="mx-auto" /><span className="text-[10px] block">結帳清單</span></button>
+          <button onClick={() => setActiveTab('menu')} className={`flex-1 min-w-[80px] py-3 font-bold transition-all border-b-4 ${activeTab === 'menu' ? 'border-orange-500 text-orange-600 bg-orange-50' : 'border-transparent text-slate-400'}`}><Utensils size={18} className="mx-auto" /><span className="text-[10px] block">菜單管理</span></button>
+
           <button onClick={() => setActiveTab('manual')} className={`flex-1 min-w-[80px] py-3 font-bold transition-all border-b-4 ${activeTab === 'manual' ? 'border-orange-500 text-orange-600 bg-orange-50' : 'border-transparent text-slate-400'}`}><ShoppingCart size={18} className="mx-auto" /><span className="text-[10px] block">代客下單</span></button>
           <button onClick={() => setActiveTab('history')} className={`flex-1 min-w-[80px] py-3 font-bold transition-all border-b-4 ${activeTab === 'history' ? 'border-orange-500 text-orange-600 bg-orange-50' : 'border-transparent text-slate-400'}`}><History size={18} className="mx-auto" /><span className="text-[10px] block">營業紀錄</span></button>
           <button onClick={() => setActiveTab('settings')} className={`flex-1 min-w-[80px] py-3 font-bold transition-all border-b-4 ${activeTab === 'settings' ? 'border-orange-500 text-orange-600 bg-orange-50' : 'border-transparent text-slate-400'}`}><QrCode size={18} className="mx-auto" /><span className="text-[10px] block">設置</span></button>
@@ -266,17 +474,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
                     <ul className="space-y-1 mb-4">{order.items.map((item, idx) => (<li key={idx} className="flex justify-between text-slate-700"><span>{item.name}</span><span className="font-bold">x {item.quantity}</span></li>))}</ul>
                     <div className="flex gap-2">
                       <button onClick={() => onUpdateStatus(order.id, 'preparing')} className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-bold text-sm active:scale-95 transition-transform">開始製作</button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log('🗑️ 待處理刪除按鈕被點擊，訂單 ID:', order.id);
-                          console.log('✓ 執行刪除');
-                          onDeleteOrder(order.id);
-                        }}
-                        className="p-2 text-slate-300 hover:text-red-500 bg-slate-50 rounded-lg active:scale-90 transition-all"
-                      >
-                        <Trash2 size={20} />
-                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); onDeleteOrder(order.id); }} className="p-2 text-slate-300 hover:text-red-500 bg-slate-50 rounded-lg active:scale-90 transition-all"><Trash2 size={20} /></button>
                     </div>
                   </div>
                 ))}
@@ -291,17 +489,7 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
                     <ul className="space-y-1 mb-4">{order.items.map((item, idx) => (<li key={idx} className="flex justify-between text-blue-900"><span>{item.name}</span><span className="font-bold">x {item.quantity}</span></li>))}</ul>
                     <div className="flex gap-2">
                       <button onClick={() => onUpdateStatus(order.id, 'completed')} className="flex-1 bg-green-600 text-white py-3 rounded-lg font-bold active:scale-95 transition-transform">完成出餐</button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          console.log('🗑️ 製作中刪除按鈕被點擊，訂單 ID:', order.id);
-                          console.log('✓ 執行刪除');
-                          onDeleteOrder(order.id);
-                        }}
-                        className="p-3 text-slate-300 hover:text-red-500 bg-white rounded-lg active:scale-90 transition-all"
-                      >
-                        <Trash2 size={20} />
-                      </button>
+                      <button onClick={(e) => { e.stopPropagation(); onDeleteOrder(order.id); }} className="p-3 text-slate-300 hover:text-red-500 bg-white rounded-lg active:scale-90 transition-all"><Trash2 size={20} /></button>
                     </div>
                   </div>
                 ))}
@@ -343,7 +531,10 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
           </div>
         )}
 
-        {activeTab === 'manual' && <ManualOrderSection />}
+        {/* 使用函式呼叫，避免組件重新掛載 */}
+        {activeTab === 'menu' && renderMenuManagementSection()}
+
+        {activeTab === 'manual' && renderManualOrderSection()}
 
         {activeTab === 'history' && (
           <div className="max-w-4xl mx-auto space-y-6">
@@ -372,14 +563,14 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
           </div>
         )}
 
-        {activeTab === 'settings' && <SettingsSection />}
+        {/* [修正] 改為呼叫 renderSettingsSection 函式，而非使用 JSX 組件 */}
+        {activeTab === 'settings' && renderSettingsSection()}
       </main>
 
       <OrderDetailsModal />
-      {/* [修改完成] 萬用列印區塊：支援「訂單兩聯」與「桌碼 QR」, 改讀取 printingOrder，並改為連續列印 (無強制分頁) */}
-      <div className="print-only text-black bg-white w-full mx-auto">
 
-        {/* --- 情境 A: 列印訂單 (兩聯式) --- */}
+      {/* 萬用列印區塊：支援「訂單兩聯」與「桌碼 QR」 */}
+      <div className="print-only text-black bg-white w-full mx-auto">
         {printingOrder && !isPrintingQR && (
           <div className="max-w-[80mm] mx-auto p-2 text-sm font-mono">
             {/* 第一聯：顧客/櫃台聯 */}
@@ -436,7 +627,6 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
           </div>
         )}
 
-        {/* --- 情境 B: 列印 QR Code (A4 網格排版) --- */}
         {isPrintingQR && (
           <div className="w-full p-8">
             <h1 className="text-2xl font-bold text-center mb-6 border-b pb-4">桌號 QR Code 配置圖</h1>

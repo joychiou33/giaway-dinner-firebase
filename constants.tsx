@@ -1,4 +1,3 @@
-
 import { MenuItem } from './types';
 
 export const INITIAL_MENU: MenuItem[] = [
@@ -8,7 +7,8 @@ export const INITIAL_MENU: MenuItem[] = [
     price: 45,
     category: '主食',
     description: '手切五花肉慢火燉煮，肥而不膩。',
-    image: 'https://picsum.photos/seed/rice/300/200'
+    image: 'https://picsum.photos/seed/rice/300/200',
+    available: true
   },
   {
     id: '2',
@@ -16,7 +16,8 @@ export const INITIAL_MENU: MenuItem[] = [
     price: 50,
     category: '主食',
     description: '特製油蔥酥與Ｑ彈手工麵條。',
-    image: 'https://picsum.photos/seed/noodles/300/200'
+    image: 'https://picsum.photos/seed/noodles/300/200',
+    available: true
   },
   {
     id: '3',
@@ -24,7 +25,8 @@ export const INITIAL_MENU: MenuItem[] = [
     price: 55,
     category: '主食',
     description: '鮮嫩雞絲搭配香噴噴雞油。',
-    image: 'https://picsum.photos/seed/chicken/300/200'
+    image: 'https://picsum.photos/seed/chicken/300/200',
+    available: true
   },
   {
     id: '4',
@@ -32,7 +34,8 @@ export const INITIAL_MENU: MenuItem[] = [
     price: 40,
     category: '小菜',
     description: '每日嚴選新鮮季節蔬菜。',
-    image: 'https://picsum.photos/seed/veg/300/200'
+    image: 'https://picsum.photos/seed/veg/300/200',
+    available: true
   },
   {
     id: '5',
@@ -40,7 +43,8 @@ export const INITIAL_MENU: MenuItem[] = [
     price: 15,
     category: '小菜',
     description: '滷至入味的茶香蛋。',
-    image: 'https://picsum.photos/seed/egg/300/200'
+    image: 'https://picsum.photos/seed/egg/300/200',
+    available: true
   },
   {
     id: '6',
@@ -48,7 +52,8 @@ export const INITIAL_MENU: MenuItem[] = [
     price: 40,
     category: '小菜',
     description: '滷味拼盤，份量足。',
-    image: 'https://picsum.photos/seed/tofu/300/200'
+    image: 'https://picsum.photos/seed/tofu/300/200',
+    available: true
   },
   {
     id: '7',
@@ -56,7 +61,8 @@ export const INITIAL_MENU: MenuItem[] = [
     price: 35,
     category: '湯品',
     description: 'Ｑ彈貢丸搭配清甜大骨湯。',
-    image: 'https://picsum.photos/seed/soup/300/200'
+    image: 'https://picsum.photos/seed/soup/300/200',
+    available: true
   },
   {
     id: '8',
@@ -64,7 +70,8 @@ export const INITIAL_MENU: MenuItem[] = [
     price: 120,
     category: '湯品',
     description: '無刺魚肚，鮮美甘甜。',
-    image: 'https://picsum.photos/seed/fish/300/200'
+    image: 'https://picsum.photos/seed/fish/300/200',
+    available: true
   },
   {
     id: '9',
@@ -72,7 +79,8 @@ export const INITIAL_MENU: MenuItem[] = [
     price: 25,
     category: '飲料',
     description: '香甜不澀的經典風味。',
-    image: 'https://picsum.photos/seed/tea/300/200'
+    image: 'https://picsum.photos/seed/tea/300/200',
+    available: true
   },
   {
     id: '10',
@@ -80,7 +88,8 @@ export const INITIAL_MENU: MenuItem[] = [
     price: 25,
     category: '飲料',
     description: '清爽解膩，回甘好喝。',
-    image: 'https://picsum.photos/seed/greentea/300/200'
+    image: 'https://picsum.photos/seed/greentea/300/200',
+    available: true
   }
 ];
 
