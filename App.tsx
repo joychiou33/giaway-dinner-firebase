@@ -6,6 +6,8 @@ import CustomerView from './components/CustomerView';
 import OwnerDashboard from './components/OwnerDashboard';
 import OwnerLogin from './components/OwnerLogin';
 import { Store, ShoppingBag, Lock } from 'lucide-react';
+// 使用 dbService 統一管理 Firebase 操作
+import { dbService } from './services/dbService';
 
 const Navigation: React.FC<{ isOwner: boolean }> = ({ isOwner }) => {
   const navigate = useNavigate();
@@ -44,19 +46,7 @@ const Navigation: React.FC<{ isOwner: boolean }> = ({ isOwner }) => {
 };
 
 const App: React.FC = () => {
-  const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('giaway_orders');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed.map((o: any) => ({ ...o, createdAt: new Date(o.createdAt) }));
-      } catch (e) {
-        return [];
-      }
-    }
-    return [];
-  });
-
+  const [orders, setOrders] = useState<Order[]>([]);
   const [isOwner, setIsOwner] = useState<boolean>(() => sessionStorage.getItem('is_owner') === 'true');
 
   const [ownerPasscode, setOwnerPasscode] = useState<string>(() => {
@@ -64,9 +54,17 @@ const App: React.FC = () => {
     return saved || '88888888';
   });
 
+  // 使用 Firebase 即時監聽訂單變動
   useEffect(() => {
-    localStorage.setItem('giaway_orders', JSON.stringify(orders));
-  }, [orders]);
+    const unsubscribe = dbService.subscribeToOrders((firebaseOrders) => {
+      setOrders(firebaseOrders);
+      // 同步到 localStorage 作為備份
+      localStorage.setItem('giaway_orders', JSON.stringify(firebaseOrders));
+    });
+
+    // 清理監聽器
+    return () => unsubscribe();
+  }, []);
 
   const handleLogin = (pass: string) => {
     if (pass === ownerPasscode) {
@@ -92,30 +90,53 @@ const App: React.FC = () => {
   };
 
   const handleAddOrder = useCallback(async (tableNumber: string, items: OrderItem[]) => {
-    await new Promise(resolve => setTimeout(resolve, 300));
-
-    const newOrder: Order = {
-      id: Math.random().toString(36).substr(2, 9),
-      tableNumber,
-      items,
-      totalPrice: items.reduce((sum, item) => sum + (item.price * item.quantity), 0),
-      status: 'pending',
-      createdAt: new Date(),
-    };
-
-    setOrders(prev => [...prev, newOrder]);
+    try {
+      await dbService.createOrder(tableNumber, items);
+      console.log('訂單已建立');
+    } catch (error) {
+      console.error('建立訂單失敗:', error);
+      alert('建立訂單失敗，請重試');
+    }
   }, []);
 
-  const updateOrderStatus = useCallback((id: string, status: OrderStatus) => {
-    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+  const updateOrderStatus = useCallback(async (id: string, status: OrderStatus) => {
+    try {
+      await dbService.updateOrderStatus(id, status);
+      console.log('訂單狀態已更新:', id, status);
+    } catch (error) {
+      console.error('更新訂單狀態失敗:', error);
+      alert('更新訂單狀態失敗，請重試');
+    }
   }, []);
 
-  const clearTable = useCallback((tableNumber: string) => {
-    setOrders(prev => prev.map(o =>
-      (o.tableNumber === tableNumber && o.status !== 'cancelled' && o.status !== 'paid')
-        ? { ...o, status: 'paid' }
-        : o
-    ));
+  const clearTable = useCallback(async (tableNumber: string) => {
+    try {
+      // 找出該桌所有未結帳的訂單
+      const tablePendingOrders = orders.filter(o =>
+        o.tableNumber === tableNumber &&
+        o.status !== 'cancelled' &&
+        o.status !== 'paid'
+      );
+
+      const orderIds = tablePendingOrders.map(o => o.id);
+      await dbService.clearTable(tableNumber, orderIds);
+
+      console.log(`桌號 ${tableNumber} 已結帳，共 ${orderIds.length} 筆訂單`);
+    } catch (error) {
+      console.error('結帳失敗:', error);
+      alert('結帳失敗，請重試');
+    }
+  }, [orders]);
+
+  const deleteOrder = useCallback(async (orderId: string) => {
+    console.log('App.deleteOrder 被呼叫，訂單 ID:', orderId);
+    try {
+      await dbService.deleteOrder(orderId);
+      console.log('✅ 訂單已刪除:', orderId);
+    } catch (error) {
+      console.error('❌ 刪除訂單失敗:', error);
+      alert('刪除訂單失敗，請重試');
+    }
   }, []);
 
   return (
@@ -131,6 +152,7 @@ const App: React.FC = () => {
                 orders={orders}
                 onUpdateStatus={updateOrderStatus}
                 onClearTable={clearTable}
+                onDeleteOrder={deleteOrder}
                 onAddOrder={handleAddOrder}
                 onLogout={handleLogout}
                 onChangePasscode={handleChangePasscode}

@@ -9,12 +9,13 @@ interface OwnerDashboardProps {
   orders: Order[];
   onUpdateStatus: (id: string, status: OrderStatus) => void;
   onClearTable: (tableNumber: string) => void;
+  onDeleteOrder: (orderId: string) => void;
   onAddOrder: (tableNumber: string, items: OrderItem[]) => Promise<void>;
   onLogout: () => void;
   onChangePasscode: (newPass: string) => boolean;
 }
 
-const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus, onClearTable, onAddOrder, onLogout, onChangePasscode }) => {
+const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus, onClearTable, onDeleteOrder, onAddOrder, onLogout, onChangePasscode }) => {
   const [activeTab, setActiveTab] = React.useState<'kitchen' | 'billing' | 'manual' | 'history' | 'settings'>('kitchen');
   const [confirmingTable, setConfirmingTable] = useState<string | null>(null);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
@@ -36,7 +37,8 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
 
   const activeTables = useMemo(() => {
     const tableMap: Record<string, TableTotal> = {};
-    orders.filter(o => o.status !== 'cancelled' && o.status !== 'paid').forEach(o => {
+    // 只顯示已完成出餐（completed）的訂單，pending 和 preparing 不應出現在結帳清單
+    orders.filter(o => o.status === 'completed').forEach(o => {
       const tNum = o.tableNumber || '未知';
       if (!tableMap[tNum]) {
         tableMap[tNum] = { tableNumber: tNum, totalAmount: 0, orderIds: [] };
@@ -199,10 +201,11 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
                     <div className="flex gap-2">
                       <button onClick={() => onUpdateStatus(order.id, 'preparing')} className="flex-1 bg-blue-500 text-white py-2 rounded-lg font-bold text-sm active:scale-95 transition-transform">開始製作</button>
                       <button
-                        onClick={() => {
-                          if (window.confirm('確定要退掉這張訂單嗎？')) {
-                            onUpdateStatus(order.id, 'cancelled');
-                          }
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          console.log('🗑️ 待處理刪除按鈕被點擊，訂單 ID:', order.id);
+                          console.log('✓ 執行刪除');
+                          onDeleteOrder(order.id);
                         }}
                         className="p-2 text-slate-300 hover:text-red-500 bg-slate-50 rounded-lg active:scale-90 transition-all"
                       >
@@ -220,7 +223,20 @@ const OwnerDashboard: React.FC<OwnerDashboardProps> = ({ orders, onUpdateStatus,
                   <div key={order.id} className="bg-blue-50 p-4 rounded-xl shadow-sm border border-blue-200 animate-in slide-in-from-right-2">
                     <span className="text-lg font-black bg-white px-3 py-1 rounded-md mb-3 block w-fit">{order.tableNumber}</span>
                     <ul className="space-y-1 mb-4">{order.items.map((item, idx) => (<li key={idx} className="flex justify-between text-blue-900"><span>{item.name}</span><span className="font-bold">x {item.quantity}</span></li>))}</ul>
-                    <button onClick={() => onUpdateStatus(order.id, 'completed')} className="w-full bg-green-600 text-white py-3 rounded-lg font-bold active:scale-95 transition-transform">完成出餐</button>
+                    <div className="flex gap-2">
+                      <button onClick={() => onUpdateStatus(order.id, 'completed')} className="flex-1 bg-green-600 text-white py-3 rounded-lg font-bold active:scale-95 transition-transform">完成出餐</button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          console.log('🗑️ 製作中刪除按鈕被點擊，訂單 ID:', order.id);
+                          console.log('✓ 執行刪除');
+                          onDeleteOrder(order.id);
+                        }}
+                        className="p-3 text-slate-300 hover:text-red-500 bg-white rounded-lg active:scale-90 transition-all"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>

@@ -1,5 +1,5 @@
 {
-  "name": "giaway-dinner vide coding",
+  "name": "Giaway Dinner - Firebase Professional Edition",
   "description": "A comprehensive QR-code ordering and management system for small restaurants, featuring customer self-ordering, owner dashboard for order sequencing, and table-based billing tracking.\n我是一個小吃店老闆，想要做一個店內掃碼點餐的系統，讓我可以依照訂單正確且按照順序出餐，結帳時也可方便對照和總結每桌餐費。結帳金流先不串接比較簡單(綠界或Linepay)。如果可以，我想要在收銀櫃臺，有一個彈性方案，可以替不懂掃碼點餐的人，由我進行下單。",
   "requestFramePermissions": []
 }

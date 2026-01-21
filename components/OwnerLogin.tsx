@@ -36,8 +36,8 @@ const OwnerLogin: React.FC<OwnerLoginProps> = ({ onLogin }) => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="relative group">
-            <input 
-              type="password" 
+            <input
+              type="password"
               inputMode="numeric"
               maxLength={8}
               value={passcode}
@@ -49,7 +49,7 @@ const OwnerLogin: React.FC<OwnerLoginProps> = ({ onLogin }) => {
             {error && <p className="text-red-500 text-xs text-center mt-3 font-bold flex items-center justify-center gap-1 animate-in fade-in slide-in-from-top-1">密碼不正確，請重新輸入</p>}
           </div>
 
-          <button 
+          <button
             type="submit"
             disabled={passcode.length < 8}
             className={`w-full py-4 rounded-2xl font-bold text-lg transition-all flex items-center justify-center gap-2 shadow-xl shadow-orange-500/10 ${passcode.length === 8 ? 'bg-orange-500 text-white active:scale-95' : 'bg-slate-800 text-slate-600 cursor-not-allowed'}`}
@@ -58,14 +58,14 @@ const OwnerLogin: React.FC<OwnerLoginProps> = ({ onLogin }) => {
           </button>
         </form>
 
-        <button 
+        <button
           onClick={() => navigate('/customer')}
           className="w-full mt-8 text-slate-600 text-sm font-bold hover:text-slate-400 transition-colors uppercase tracking-widest"
         >
           返回點餐
         </button>
       </div>
-      
+
       <style>{`
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
